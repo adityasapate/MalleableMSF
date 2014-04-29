@@ -32,14 +32,13 @@ int get_num_cores(int argc, char* argv[]){
 	return num_cores;
 }
 
-float** process_inputs(ifstream *input, long *num_vert, long *num_edge){
+float** process_inputs(ifstream *input){
 
 	string num_vertices_str;
 	getline(*input, num_vertices_str);
 //	cout<<"String : "<<num_vertices_str<<"\n";
-	int num_vertices = atoi(num_vertices_str.c_str());
-//	cout<<"num_vertices = "<<num_vertices<<"\n";
- *num_vert = num_vertices;
+	num_vertices = atoi(num_vertices_str.c_str());
+//	cout<<"num_vertices = "<<num_vertices<<"\n"
 
 	//Allocate space for the matrix
 	float** matrix = NULL;
@@ -58,7 +57,7 @@ float** process_inputs(ifstream *input, long *num_vert, long *num_edge){
 //		cout<<"buffer = "<<buffer<<"\n";
 		if(buffer.compare("done") == 0)
 			break;
-		(*num_edge)++;
+		num_edges++;
 		istringstream buff(buffer);
 		istream_iterator<string> beg(buff), end;
 		vector<string> tokens(beg, end);
@@ -79,8 +78,8 @@ float** process_inputs(ifstream *input, long *num_vert, long *num_edge){
 			return NULL;
 		}
 		
-		Edge e = new Edge(from_vertex-1, to_vertex-1, len);
-		edge_pool.insert(e);
+		Edge *e = new Edge(from_vertex-1, to_vertex-1, len);
+		edge_pool.insert(*e);
 		matrix[from_vertex-1][to_vertex-1] = len;
 
 	}
@@ -114,14 +113,14 @@ void *do_compaction(void* arg){
 	int thread_id = *((int *)arg);
 
 	//TODO: Should find a way of doing this
-	(*num_edges)--;
+	num_edges--;
 	return NULL;
 }
 void *do_partial_prim(void* arg){
 	int thread_id = *((int *)arg);
 	
 	cout<<"Partial prim on CPU "<<thread_id<<"\n";
-	
+	cout<<"num_edges = "<<num_edges<<"\n";
 	int i = 0;
 	while(1){
 		while(successor[i] != -1 && i < num_vertices){
@@ -131,7 +130,7 @@ void *do_partial_prim(void* arg){
 			break;
 		//Just for seeing termination
 		break;
-
+		
 		pthread_mutex_lock(&successor_lock[i]);
 		if(successor[i] == -1){
 			//set successor to urself
@@ -144,42 +143,55 @@ void *do_partial_prim(void* arg){
 			pthread_mutex_unlock(&successor_lock[i]);
 			continue;
 		}
-		long set_verts[] = {i};
+
 		Cluster curr_cluster;
-		
+		curr_cluster.insert(i);
+
 		while(curr_cluster.size() < max_subgraph_size){
 			//find lightest edge from within Q to
 			// outside Q
-			Edge *e = curr_cluster.get_lightest_out_edge();
+			set<Edge>::iterator min_edge = curr_cluster.get_lightest_out_edge();
 			//cannot find => break
-			if(e == NULL)
+			if(min_edge == curr_cluster.get_out_edges().end()){
+				cout<<"Some error in finding min_edge\n";
 				break;
+			}
+			Edge e = *min_edge;
 			//erase edge from edge_pool and include edge in global msf
+			pthread_mutex_lock(&edge_transfer_lock);
+			set<Edge>::iterator iter = edge_pool.find(e);
+			if(iter == edge_pool.end())
+				pthread_mutex_unlock(&edge_transfer_lock);
+			else{
+				edge_pool.erase(*iter);
+				spanning_forest.insert(e);
+				pthread_mutex_unlock(&edge_transfer_lock);
+			}
 			
-			spanning_forest.insert(*e);
 			//if successor[v] not set
 			//atomically set it to i
-			if(successor[e->getToVertex()] == -1){
-
-				pthread_mutex_lock(&successor_lock[e->getToVertex()]);
-				if(successor[e->getToVertex()] == -1){
-					successor[e->getToVertex()] = i;
-					pthread_mutex_unlock(&successor_lock[e->getToVertex()]);
-					//Q = QUV
-					curr_cluster.insert(e->getToVertex());
+			if(successor[e.getToVertex()] == -1){
+				pthread_mutex_lock(&successor_lock[e.getToVertex()]);
+				if(successor[e.getToVertex()] == -1){
+					successor[e.getToVertex()] = i;
+					pthread_mutex_unlock(&successor_lock[e.getToVertex()]);
+					curr_cluster.lock();
+					curr_cluster.insert(e.getToVertex());
+					curr_cluster.unlock();
 				}
 				else{
-					pthread_mutex_unlock(&successor_lock[e->getToVertex()]);
+					pthread_mutex_unlock(&successor_lock[e.getToVertex()]);
 					pthread_mutex_lock(&successor_lock[i]);
-					successor[i] = successor[e->getToVertex()];
+					successor[i] = successor[e.getToVertex()];
 					pthread_mutex_unlock(&successor_lock[i]);
 					break;
 				}
 			}
 			else{
 				pthread_mutex_lock(&successor_lock[i]);
-				successor[i] = successor[e->getToVertex()];
+				successor[i] = successor[e.getToVertex()];
 				pthread_mutex_unlock(&successor_lock[i]);
+				
 				break;
 			}
 		}
@@ -187,22 +199,29 @@ void *do_partial_prim(void* arg){
 	return NULL;
 }
 
-void do_pma(long num_vertices, long num_edges, int num_cores){
-	
+
+void do_pma(){
+	/*
 	pthread_barrier_t *barrier1 = new pthread_barrier_t;
 	pthread_barrier_init(barrier1, NULL, num_cores);
 
 	pthread_barrier_t *barrier2 = new pthread_barrier_t;
 	pthread_barrier_init(barrier2, NULL, num_cores);
+	*/
 
-	while(num_edges){
+	cout<<"do_pma : num_cores = "<<num_cores<<"\n";
+	while(num_edges >= 0){
 		successor = new long[num_vertices];
 		successor_lock = new pthread_mutex_t[num_vertices];
+
+		cluster_set = new set<Cluster>();
+		
 		long potential_subgraph_size = num_vertices / num_cores;
 		if(potential_subgraph_size > 100)
 			max_subgraph_size = potential_subgraph_size;
 		else
 			max_subgraph_size = 100;
+
 		for(long i = 0; i < num_vertices; i++){
 			successor[i] = -1;
 			pthread_mutex_init(&successor_lock[i], NULL);
@@ -215,6 +234,7 @@ void do_pma(long num_vertices, long num_edges, int num_cores){
 		//pthread_barrier_wait(barrier1);
 		for(int i = 0; i < num_cores; i ++)
 			pthread_join(cputhreads[i], NULL);
+
 		for(int i = 0; i < num_cores; i++){
 			int n = i;
 			pthread_create(&cputhreads[i], NULL, do_compaction, (void*) &n);
@@ -227,43 +247,55 @@ void do_pma(long num_vertices, long num_edges, int num_cores){
 		delete successor;
 	}
 }
+
+
 int main(int argc, char* argv[]){
 	printf("Welcome to this jaffa program\n");
 
-	int num_cores = get_num_cores(argc, argv);
+	//get number of cores on which to run
+	num_cores = get_num_cores(argc, argv);
 	if(num_cores == -1)
 		return -1;
 	cout<<"Running on "<<num_cores<<" cores...\n";
+
+	//initialize pthread array
 	cputhreads = new pthread_t[num_cores];
-	cpu_set_t* cpusets = new cpu_set_t[num_cores];
 
-	for(int i = 0; i < num_cores; i++){
-		CPU_ZERO(&cpusets[i]);
-		CPU_SET(i, &cpusets[i]);
-	}
+	//included from MSF.h
+	num_vertices = 0;
+	num_edges = 0;
 
-	long num_vertices = 0, num_edges = 0;
+	//read edges from file and prepare the distance matrix
 	ifstream input_file;
 	input_file.open(argv[2]);
 	cout<<"Parsing the input file...\n";
-	matrix = process_inputs(&input_file, &num_vertices, &num_edges);
+	matrix = process_inputs(&input_file);
 	if(matrix == NULL){
 		cout<<"Error parsing input file.\n";
 		return -1;
 	}
+
+	//DEBUG: print the distance matrix
 	cout<<"Matrix prepared:\n";
 	for(int i = 0; i < num_vertices; i ++){
 		for(int j = 0; j < num_vertices; j++)
 			cout<<matrix[i][j]<<"\t";
 		cout<<"\n";
 	}
+
+	//close the input stream
 	if(input_file.is_open())
 		input_file.close();
-	
-	do_pma(num_vertices, num_edges, num_cores);
+
+	//initialise the edge_transfer_lock
+	pthread_mutex_init(&edge_transfer_lock, NULL);
+
+	//call do_pma to find the msf concurrently
+	do_pma();
 	
 	delete matrix;
 	delete cputhreads;
 	return 0;
+	
 	
 }
