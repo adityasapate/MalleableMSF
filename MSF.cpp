@@ -78,6 +78,9 @@ float** process_inputs(ifstream *input, long *num_vert, long *num_edge){
 			cout<<"Vertex number cannot be more than number of vertices\n";
 			return NULL;
 		}
+		
+		Edge e = new Edge(from_vertex-1, to_vertex-1, len);
+		edge_pool.insert(e);
 		matrix[from_vertex-1][to_vertex-1] = len;
 
 	}
@@ -85,7 +88,8 @@ float** process_inputs(ifstream *input, long *num_vert, long *num_edge){
 	return matrix;
 }
 
-Edge* find_lightest_out_edge(set<long> cluster, long num_vertices){
+/*
+Edge* find_lightest_out_edge(set<long> cluster){
 	Edge *e = NULL;
 	float min_len = FLT_MAX;
 	set<long>::const_iterator elem;
@@ -104,26 +108,18 @@ Edge* find_lightest_out_edge(set<long> cluster, long num_vertices){
 	}
 	return e;
 }
+*/
 void *do_compaction(void* arg){
-	ArgPacket2 *my_arg = (ArgPacket2 *) arg;
 
-	long *num_vertices = my_arg->getVertices();
-	long *num_edges = my_arg->getEdges();
-	int num_cores = my_arg->getCores();
-	int cpu_id = my_arg->getCpuId();
+	int thread_id = *((int *)arg);
 
 	//TODO: Should find a way of doing this
 	(*num_edges)--;
 	return NULL;
 }
 void *do_partial_prim(void* arg){
-	ArgPacket1 *my_arg = (ArgPacket1 *)arg;
+	int thread_id = *((int *)arg);
 	
-	long num_vertices = my_arg->getVertices();
-	long num_edges = my_arg->getEdges();
-	int num_cores = my_arg->getCores();
-	int thread_id = my_arg->getCpuId();
-
 	cout<<"Partial prim on CPU "<<thread_id<<"\n";
 	
 	int i = 0;
@@ -140,6 +136,7 @@ void *do_partial_prim(void* arg){
 		if(successor[i] == -1){
 			//set successor to urself
 			successor[i] = i;
+			set<long> curr_cluster;
 			pthread_mutex_unlock(&successor_lock[i]);
 		}
 		else{
@@ -148,32 +145,35 @@ void *do_partial_prim(void* arg){
 			continue;
 		}
 		long set_verts[] = {i};
-		set<long> Q(set_verts, set_verts + 1);
-		while(Q.size() < max_subgraph_size){
+		Cluster curr_cluster;
+		
+		while(curr_cluster.size() < max_subgraph_size){
 			//find lightest edge from within Q to
 			// outside Q
-			Edge *e = find_lightest_out_edge(Q, num_vertices);
+			Edge *e = curr_cluster.get_lightest_out_edge();
 			//cannot find => break
 			if(e == NULL)
 				break;
-			//include edge in global msf
+			//erase edge from edge_pool and include edge in global msf
+			
 			spanning_forest.insert(*e);
 			//if successor[v] not set
 			//atomically set it to i
 			if(successor[e->getToVertex()] == -1){
-			//TODO
+
 				pthread_mutex_lock(&successor_lock[e->getToVertex()]);
 				if(successor[e->getToVertex()] == -1){
 					successor[e->getToVertex()] = i;
 					pthread_mutex_unlock(&successor_lock[e->getToVertex()]);
 					//Q = QUV
-					Q.insert(e->getToVertex());
+					curr_cluster.insert(e->getToVertex());
 				}
 				else{
 					pthread_mutex_unlock(&successor_lock[e->getToVertex()]);
 					pthread_mutex_lock(&successor_lock[i]);
 					successor[i] = successor[e->getToVertex()];
 					pthread_mutex_unlock(&successor_lock[i]);
+					break;
 				}
 			}
 			else{
@@ -188,10 +188,13 @@ void *do_partial_prim(void* arg){
 }
 
 void do_pma(long num_vertices, long num_edges, int num_cores){
+	
 	pthread_barrier_t *barrier1 = new pthread_barrier_t;
 	pthread_barrier_init(barrier1, NULL, num_cores);
+
 	pthread_barrier_t *barrier2 = new pthread_barrier_t;
 	pthread_barrier_init(barrier2, NULL, num_cores);
+
 	while(num_edges){
 		successor = new long[num_vertices];
 		successor_lock = new pthread_mutex_t[num_vertices];
@@ -205,20 +208,21 @@ void do_pma(long num_vertices, long num_edges, int num_cores){
 			pthread_mutex_init(&successor_lock[i], NULL);
 		}
 		for(int i = 0; i < num_cores; i++){
-			ArgPacket1 *arg = new ArgPacket1(num_vertices, num_edges, num_cores, i);
-			pthread_create(&cputhreads[i], NULL, do_partial_prim, (void*) arg);
+			int n = i;
+			pthread_create(&cputhreads[i], NULL, do_partial_prim, (void*) &n);
 		}
 		//do_partial_prim(num_vertices, num_edges, num_cores);
 		//pthread_barrier_wait(barrier1);
 		for(int i = 0; i < num_cores; i ++)
 			pthread_join(cputhreads[i], NULL);
 		for(int i = 0; i < num_cores; i++){
-			ArgPacket2 *arg = new ArgPacket2(&num_vertices, &num_edges, num_cores, i);
-			pthread_create(&cputhreads[i], NULL, do_compaction, (void*) arg);
+			int n = i;
+			pthread_create(&cputhreads[i], NULL, do_compaction, (void*) &n);
 		}
 		//pthread_barrier_wait(barrier2);
 		for(int i = 0; i < num_cores; i ++)
 			pthread_join(cputhreads[i], NULL);
+
 		delete successor_lock;
 		delete successor;
 	}
@@ -261,4 +265,5 @@ int main(int argc, char* argv[]){
 	delete matrix;
 	delete cputhreads;
 	return 0;
+	
 }
