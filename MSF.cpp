@@ -234,13 +234,13 @@ int main(int argc, char* argv[]){
 	if(num_cores == -1)
 		return -1;
 	cout<<"Running on "<<num_cores<<" cores...\n";
-	cputhreads = new pthread_t[num_cores];
-	cpu_set_t* cpusets = new cpu_set_t[num_cores];
-
-	for(int i = 0; i < num_cores; i++){
-		CPU_ZERO(&cpusets[i]);
-		CPU_SET(i, &cpusets[i]);
-	}
+// 	cputhreads = new pthread_t[num_cores];
+// 	cpu_set_t* cpusets = new cpu_set_t[num_cores];
+// 
+// 	for(int i = 0; i < num_cores; i++){
+// 		CPU_ZERO(&cpusets[i]);
+// 		CPU_SET(i, &cpusets[i]);
+// 	}
 
 	long num_vertices = 0, num_edges = 0;
 	ifstream input_file;

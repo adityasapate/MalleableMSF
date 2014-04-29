@@ -18,7 +18,7 @@ class Edge{
 	long from;
 	long to;
 	float len;
-	pthreead_mutex_t lock;
+	pthread_mutex_t lock;
 
 public:
 	Edge(){
@@ -107,4 +107,4 @@ set<Cluster> *cluster_set;
 set<Edge> spanning_forest;
 set<Edge> edge_pool;
 
-pthreead_mutex_t edge_pool_lock;
+pthread_mutex_t edge_pool_lock;
