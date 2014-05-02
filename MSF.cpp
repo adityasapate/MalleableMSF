@@ -113,6 +113,7 @@ Edge* find_lightest_out_edge(set<long> cluster){
 }
 */
 
+
 Cluster curr_cluster;
 void *do_compaction(void* arg){
 
