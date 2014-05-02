@@ -90,6 +90,10 @@ public:
 			if(to == other.to)
 				if(len == other.len)
 					return true;
+		if(from == other.to)
+			if(to == other.from)
+				if(len == other.len)
+					return true;
 		return false;
 	}
 };
@@ -101,6 +105,13 @@ class Cluster{
 
 public:
 
+	bool contains(long vertex){
+		set<long>::iterator iter = vertices.find(vertex);
+		if(iter == vertices.end())
+			return false;
+		return true;
+	}
+	
 	void update_out_edges(){
 		out_edges.clear();
 		cout<<"Outedges cleared..."<<out_edges.size()<<"\n";
@@ -216,12 +227,17 @@ public:
 		cout<<"}";
 	}
 };
+
 set<Cluster> *cluster_set;
 
 Cluster *new_cluster;
 
 set<Edge> spanning_forest;
 set<Edge> edge_pool;
+
+Cluster *find_cluster(Edge e){
+	
+}
 
 pthread_mutex_t edge_transfer_lock;
 pthread_mutex_t cluster_set_lock;
