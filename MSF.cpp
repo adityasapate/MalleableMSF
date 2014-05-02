@@ -46,7 +46,7 @@ float** process_inputs(ifstream *input){
 	for(int i = 0; i < num_vertices; i++){
 		matrix[i] = new float[num_vertices];
 		for(int j = 0; j < num_vertices;j++)
-			matrix[i][j] = 0.0;
+			matrix[i][j] = FLT_MAX;
 	}
 //	cout<<"Space allocated for matrix\n";
 	
@@ -66,9 +66,10 @@ float** process_inputs(ifstream *input){
 		long to_vertex = atol(tokens[1].c_str());
 		float len = ::atof(tokens[2].c_str());
 		
-//		cout<<"From vertex = "<<from_vertex<<"\n";
-//		cout<<"To vertex = "<<to_vertex<<"\n";
-//		cout<<"Length = "<<len<<"\n";
+		cout<<"From vertex = "<<from_vertex<<"\n";
+		cout<<"To vertex = "<<to_vertex<<"\n";
+		cout<<"Length = "<<len<<"\n";
+		cout<<"\n";
 		if(from_vertex == 0 || to_vertex == 0){
 			cout<<"Vertex numbering starts from 1. \n";
 			return NULL;
@@ -78,9 +79,12 @@ float** process_inputs(ifstream *input){
 			return NULL;
 		}
 		
-		Edge *e = new Edge(from_vertex-1, to_vertex-1, len);
-		edge_pool.insert(*e);
+		Edge *e1 = new Edge(from_vertex-1, to_vertex-1, len);
+		Edge *e2 = new Edge(to_vertex-1, from_vertex-1, len);
+		edge_pool.insert(*e1);
+		edge_pool.insert(*e2);
 		matrix[from_vertex-1][to_vertex-1] = len;
+		matrix[to_vertex-1][from_vertex-1] = len;
 
 	}
 
@@ -108,19 +112,25 @@ Edge* find_lightest_out_edge(set<long> cluster){
 	return e;
 }
 */
+
+Cluster curr_cluster;
 void *do_compaction(void* arg){
 
 	int thread_id = *((int *)arg);
 
 	//TODO: Should find a way of doing this
 	num_edges--;
+	
 	return NULL;
 }
 void *do_partial_prim(void* arg){
+	sleep(3);
 	int thread_id = *((int *)arg);
-	
+//	pthread_mutex_lock(&print_lock);
 	cout<<"Partial prim on CPU "<<thread_id<<"\n";
 	cout<<"num_edges = "<<num_edges<<"\n";
+//	pthread_mutex_unlock(&print_lock);
+
 	int i = 0;
 	while(1){
 		while(successor[i] != -1 && i < num_vertices){
@@ -128,14 +138,15 @@ void *do_partial_prim(void* arg){
 		}
 		if(i == num_vertices)
 			break;
-		//Just for seeing termination
-		break;
+//		pthread_mutex_lock(&print_lock);
 		
+		cout<<thread_id<<" : Vertex "<<i<<" unassigned.\n";
+
+//		pthread_mutex_unlock(&print_lock);
 		pthread_mutex_lock(&successor_lock[i]);
 		if(successor[i] == -1){
 			//set successor to urself
 			successor[i] = i;
-			set<long> curr_cluster;
 			pthread_mutex_unlock(&successor_lock[i]);
 		}
 		else{
@@ -144,22 +155,33 @@ void *do_partial_prim(void* arg){
 			continue;
 		}
 
-		Cluster curr_cluster;
-		curr_cluster.insert(i);
-
-		while(curr_cluster.size() < max_subgraph_size){
+		new_cluster = new Cluster;
+		new_cluster->insert(i);
+//		pthread_mutex_lock(&print_lock);
+		cout<<thread_id<<" : Working on vertex "<<i<<"\n";
+		while(new_cluster->size() < max_subgraph_size){
 			//find lightest edge from within Q to
 			// outside Q
-			set<Edge>::iterator min_edge = curr_cluster.get_lightest_out_edge();
+			Edge e = *(new Edge);
+			new_cluster->get_lightest_out_edge(&e);
 			//cannot find => break
-			if(min_edge == curr_cluster.get_out_edges().end()){
-				cout<<"Some error in finding min_edge\n";
+			if(e.getLen() == -1){
+				cout<<"error finding min_edge\n";
+//				pthread_mutex_lock(&cluster_set_lock);
+//				cluster_set->insert(*new_cluster);
+//				pthread_mutex_unlock(&cluster_set_lock);
+
 				break;
 			}
-			Edge e = *min_edge;
+//			pthread_mutex_lock(&print_lock);
+			cout<<thread_id<<" : min_edge at "<<e.getLen()<<"\n";
+//			pthread_mutex_unlock(&print_lock);
 			//erase edge from edge_pool and include edge in global msf
 			pthread_mutex_lock(&edge_transfer_lock);
 			set<Edge>::iterator iter = edge_pool.find(e);
+			e.print();
+			Edge found_edge=*iter;
+			found_edge.print();
 			if(iter == edge_pool.end())
 				pthread_mutex_unlock(&edge_transfer_lock);
 			else{
@@ -175,9 +197,9 @@ void *do_partial_prim(void* arg){
 				if(successor[e.getToVertex()] == -1){
 					successor[e.getToVertex()] = i;
 					pthread_mutex_unlock(&successor_lock[e.getToVertex()]);
-					curr_cluster.lock();
-					curr_cluster.insert(e.getToVertex());
-					curr_cluster.unlock();
+					new_cluster->lock();
+					new_cluster->insert(e.getToVertex());
+					new_cluster->unlock();
 				}
 				else{
 					pthread_mutex_unlock(&successor_lock[e.getToVertex()]);
@@ -191,10 +213,29 @@ void *do_partial_prim(void* arg){
 				pthread_mutex_lock(&successor_lock[i]);
 				successor[i] = successor[e.getToVertex()];
 				pthread_mutex_unlock(&successor_lock[i]);
-				
+				cout<<"breaking\n";
 				break;
 			}
 		}
+//		pthread_mutex_unlock(&print_lock);
+//		curr_cluster.print();
+		cout<<"Successor array : ";
+		for(int j = 0; j < num_vertices; j++){
+			cout<<successor[j]<<" ";
+		}
+		cout<<"\n";
+		
+		pthread_mutex_lock(&cluster_set_lock);
+		cout<<"Inserting new cluster\n";
+		new_cluster->print();
+		cout<<"\n";
+		pair<set<Cluster>::iterator,bool> p = cluster_set->insert(*new_cluster);
+		cout<<p.second<<"\n";
+		cout<<cluster_set->size()<<"\n";
+		pthread_mutex_unlock(&cluster_set_lock);
+
+		delete new_cluster;
+		
 	}
 	return NULL;
 }
@@ -210,17 +251,20 @@ void do_pma(){
 	*/
 
 	cout<<"do_pma : num_cores = "<<num_cores<<"\n";
+	int i=0;
 	while(num_edges >= 0){
+		i++;
 		successor = new long[num_vertices];
 		successor_lock = new pthread_mutex_t[num_vertices];
-
+		int i = 0;
 		cluster_set = new set<Cluster>();
-		
 		long potential_subgraph_size = num_vertices / num_cores;
 		if(potential_subgraph_size > 100)
 			max_subgraph_size = potential_subgraph_size;
 		else
 			max_subgraph_size = 100;
+		if(num_vertices < max_subgraph_size)
+			max_subgraph_size = num_vertices;
 
 		for(long i = 0; i < num_vertices; i++){
 			successor[i] = -1;
@@ -229,12 +273,18 @@ void do_pma(){
 		for(int i = 0; i < num_cores; i++){
 			int n = i;
 			pthread_create(&cputhreads[i], NULL, do_partial_prim, (void*) &n);
+//			pthread_mutex_lock(&print_lock);
+			cout<<"Created thread on CPU "<<n<<"\n";
+//			pthread_mutex_unlock(&print_lock);
+
 		}
 		//do_partial_prim(num_vertices, num_edges, num_cores);
 		//pthread_barrier_wait(barrier1);
 		for(int i = 0; i < num_cores; i ++)
 			pthread_join(cputhreads[i], NULL);
 
+		cout<<"Partial prim done\n";
+		
 		for(int i = 0; i < num_cores; i++){
 			int n = i;
 			pthread_create(&cputhreads[i], NULL, do_compaction, (void*) &n);
@@ -243,21 +293,37 @@ void do_pma(){
 		for(int i = 0; i < num_cores; i ++)
 			pthread_join(cputhreads[i], NULL);
 
+		cout<<"Iteration "<< i <<" done."<<cluster_set->size()<<" clusters created. Cluster Set : \n";
+		set<Cluster>::iterator iter = cluster_set->begin();
+		int j = 0;
+		while(iter != cluster_set->end()){
+			Cluster c = *iter;
+			cout<<"Cluster "<<j<<" : ";
+			set<long>::iterator it = c.get_vertices().begin();
+			while(it != c.get_vertices().end()){
+				cout<<*it<<" ";
+				it++;
+			}
+			cout<<"\n";
+			j++;
+			iter++;
+		}
 		delete successor_lock;
 		delete successor;
+		delete cluster_set;
 	}
 }
 
 
 int main(int argc, char* argv[]){
 	printf("Welcome to this jaffa program\n");
-
+	pthread_mutex_init(&print_lock, NULL);
 	//get number of cores on which to run
 	num_cores = get_num_cores(argc, argv);
 	if(num_cores == -1)
 		return -1;
 	cout<<"Running on "<<num_cores<<" cores...\n";
-
+	
 	//initialize pthread array
 	cputhreads = new pthread_t[num_cores];
 

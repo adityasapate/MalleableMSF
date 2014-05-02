@@ -67,6 +67,10 @@ public:
 	void unlock(){
 		pthread_mutex_unlock(&this->edge_lock);
 	}
+	void print(){
+		cout<<from<<"->"<<to<<" : "<<len<<"\n";
+		return;
+	}
 	bool operator<( const Edge other ) const{
 		if(from != other.from)
 			return (from < other.from);
@@ -98,6 +102,8 @@ class Cluster{
 public:
 
 	void update_out_edges(){
+		out_edges.clear();
+		cout<<"Outedges cleared..."<<out_edges.size()<<"\n";
 		set<long>::iterator iter = vertices.begin();
 		while(iter != vertices.end()){
 			long vertex = *iter;
@@ -105,7 +111,8 @@ public:
 				if(matrix[vertex][j] != 0){
 					if(vertices.find(j) == vertices.end()){
 						Edge *e = new Edge(vertex, j, matrix[vertex][j]);
-						out_edges.insert(*e);
+						if(e->getLen() != FLT_MAX)
+							out_edges.insert(*e);
 					}
 				}
 			}
@@ -113,25 +120,31 @@ public:
 		}
 	}
 
-	set<Edge>::iterator get_lightest_out_edge(){
+	void get_lightest_out_edge(Edge *min){
+		cout<<"here\n";
 		float min_len = FLT_MAX;
-		set<Edge>::iterator min;
 		set<Edge>::iterator iter = out_edges.begin();
+		int i = 0;
+		print_out_edges();
 		while(iter != out_edges.end()){
 			Edge e = *iter;
+			i++;
+			e.print();
 			if(e.getLen() < min_len){
+				cout<<"get_lightest_out_edge: min at posn "<<i<<"\n";
+				e.print();
 				min_len = e.getLen();
-				min = iter;
+				*min = *iter;
 			}
 			iter++;
 		}
-		if(iter == out_edges.end())
-			return iter;
-		
-		return min;
+		return;
 	}
 	set<Edge> get_out_edges(){
 		return out_edges;
+	}
+	set<long> get_vertices(){
+		return vertices;
 	}
 	long size(){
 		return vertices.size();
@@ -139,6 +152,7 @@ public:
 	void insert(long vertex){
 		vertices.insert(vertex);
 		update_out_edges();
+		print_out_edges();
 		return;
 	}
 	void lock(){
@@ -156,13 +170,59 @@ public:
 		update_out_edges();
 		pthread_mutex_init(&cluster_lock, NULL);
 	}
-	
-	
+
+	bool operator<( const Cluster other ) const{
+		if(vertices.size() != other.vertices.size())
+			return vertices.size() < other.vertices.size();
+		set<long>::iterator iter1 = vertices.begin();
+//		set<long>::iterator iter2 = other.vertices.begin();
+		while(iter1 != vertices.end()){
+			long vertex = *iter1;
+			set<long>::iterator iter2 = other.vertices.find(vertex);
+			if(iter2 == other.vertices.end()){
+				set<long>::iterator it1 = vertices.begin();
+				set<long>::iterator it2 = other.vertices.begin();
+				while(it1 != vertices.end()){
+					long v1 = *it1;
+					long v2 = *it2;
+					if (v1 != v2)
+						return (v1 < v2);
+					it1++;
+					it2++;
+				}
+			}
+			iter1++;
+		}
+		return false;
+    }
+
+	void print_out_edges(){
+		cout<<"Out edges of cluster: \n";
+		set<Edge>::iterator iter = out_edges.begin();
+		while(iter != out_edges.end()){
+			Edge e = *iter;
+			cout<<e.getFromVertex() <<"->"<<e.getToVertex()<<" : "<<e.getLen()<<"\n";
+			iter++;
+		}
+	}
+
+	void print(){
+		cout<<"{";
+		set<long>::iterator iter = vertices.begin();
+		while(iter!=vertices.end()){
+			cout<<*iter<<" ";
+			iter++;
+		}
+		cout<<"}";
+	}
 };
 set<Cluster> *cluster_set;
+
+Cluster *new_cluster;
 
 set<Edge> spanning_forest;
 set<Edge> edge_pool;
 
 pthread_mutex_t edge_transfer_lock;
 pthread_mutex_t cluster_set_lock;
+pthread_mutex_t print_lock;
