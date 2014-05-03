@@ -81,7 +81,7 @@ float** process_inputs(ifstream *input){
 		
 		Edge *e1 = new Edge(from_vertex-1, to_vertex-1, len);
 		Edge *e2 = new Edge(to_vertex-1, from_vertex-1, len);
-		edge_pool.insert(*e1);
+		edge_pool.insert(*e1);ite
 		edge_pool.insert(*e2);
 		matrix[from_vertex-1][to_vertex-1] = len;
 		matrix[to_vertex-1][from_vertex-1] = len;
@@ -274,7 +274,8 @@ void do_pma(){
 		for(int i = 0; i < num_cores; i++){
 			int n = i;
 			pthread_create(&cputhreads[i], NULL, do_partial_prim, (void*) &n);
-//			pthread_mutex_lock(&print_lock);
+//
+			pthread_mutex_lock(&print_lock);
 			cout<<"Created thread on CPU "<<n<<"\n";
 //			pthread_mutex_unlock(&print_lock);
 

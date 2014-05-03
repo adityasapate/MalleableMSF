@@ -68,6 +68,9 @@ class Cluster{
 public:
 
 	bool contains(long vertex);
+	void print_out_edges();
+	void add_edge(Edge);
+	void print();
 /*	
 	void update_out_edges(){
 		out_edges.clear();
@@ -161,20 +164,20 @@ public:
 };
 
 //Global data
-Cluster *cluster_set;
-long *belongs_to;
+Cluster **cluster_set;
+
 set<Edge> spanning_forest;
 set<Edge> edge_pool;
 
 //Locks
->>>>>>> HEAD@{1}
 pthread_mutex_t edge_transfer_lock;
-pthread_mutex_t cluster_set_lock;
+pthread_mutex_t *cluster_set_lock;
 pthread_mutex_t print_lock;
 
 //work packet functions
 void extend_cluster(void*);
 void merge_clusters(void*);
+void check_cycles(void*);
 
 //initialisation
 void init(int, char**);
