@@ -19,30 +19,19 @@ class Edge{
 	long from;
 	long to;
 	float len;
+	Cluster from_cluster;
+	Cluster to_cluster;
 	pthread_mutex_t edge_lock;
 
 	
 public:
 
-	Edge(){
-		from = -1;
-		to = -1;
-		len = -1;
-		pthread_mutex_init(&(this->edge_lock), NULL);
-	}
-	Edge(long a, long b){
-		from = a;
-		to = b;
-		len = -1;
-		pthread_mutex_init(&this->edge_lock, NULL);
-	}
+	Edge();
+	Edge(long, long, float);
+	void print();
 
-	Edge(long a, long b, float d){
-		from = a;
-		to = b;
-		len = d;
-		pthread_mutex_init(&this->edge_lock, NULL);
-	}
+	//Accessor functions
+	
 	long getToVertex(){
 		return to;
 	}
@@ -67,51 +56,19 @@ public:
 	void unlock(){
 		pthread_mutex_unlock(&this->edge_lock);
 	}
-	void print(){
-		cout<<from<<"->"<<to<<" : "<<len<<"\n";
-		return;
-	}
-	bool operator<( const Edge other ) const{
-		if(from != other.from)
-			return (from < other.from);
-		else if(to != other.to)
-			return (to < other.to);
-		else
-			return (len < other.len);
-    }
-    bool operator=( const Edge other ) {
-		from = other.from;
-		to = other.to;
-		len = other.len;
-		return true;
-	}
-	bool operator==(const Edge other ) const{
-		if(from == other.from)
-			if(to == other.to)
-				if(len == other.len)
-					return true;
-		if(from == other.to)
-			if(to == other.from)
-				if(len == other.len)
-					return true;
-		return false;
-	}
 };
 
 class Cluster{
+	long cluster_id;
+	long root;
 	set<long> vertices;
 	set<Edge> out_edges;
 	pthread_mutex_t cluster_lock;
 
 public:
 
-	bool contains(long vertex){
-		set<long>::iterator iter = vertices.find(vertex);
-		if(iter == vertices.end())
-			return false;
-		return true;
-	}
-	
+	bool contains(long vertex);
+/*	
 	void update_out_edges(){
 		out_edges.clear();
 		cout<<"Outedges cleared..."<<out_edges.size()<<"\n";
@@ -151,18 +108,25 @@ public:
 		}
 		return;
 	}
+*/
 	set<Edge> get_out_edges(){
 		return out_edges;
 	}
 	set<long> get_vertices(){
 		return vertices;
 	}
+	long get_root(){
+		return root;
+	}
+	void set_root(long r){
+		root = r;
+	}
 	long size(){
 		return vertices.size();
 	}
 	void insert(long vertex){
 		vertices.insert(vertex);
-		update_out_edges();
+//		update_out_edges();
 		print_out_edges();
 		return;
 	}
@@ -172,73 +136,45 @@ public:
 	void unlock(){
 		pthread_mutex_unlock(&cluster_lock);
 	}
-	Cluster(){
-		pthread_mutex_init(&cluster_lock, NULL);
-		//default constructor
-	}
-	Cluster(set<long> vertexSet){
-		vertices = vertexSet;
-		update_out_edges();
-		pthread_mutex_init(&cluster_lock, NULL);
-	}
 
-	bool operator<( const Cluster other ) const{
-		if(vertices.size() != other.vertices.size())
-			return vertices.size() < other.vertices.size();
-		set<long>::iterator iter1 = vertices.begin();
-//		set<long>::iterator iter2 = other.vertices.begin();
-		while(iter1 != vertices.end()){
-			long vertex = *iter1;
-			set<long>::iterator iter2 = other.vertices.find(vertex);
-			if(iter2 == other.vertices.end()){
-				set<long>::iterator it1 = vertices.begin();
-				set<long>::iterator it2 = other.vertices.begin();
-				while(it1 != vertices.end()){
-					long v1 = *it1;
-					long v2 = *it2;
-					if (v1 != v2)
-						return (v1 < v2);
-					it1++;
-					it2++;
-				}
-			}
-			iter1++;
-		}
-		return false;
-    }
-
-	void print_out_edges(){
-		cout<<"Out edges of cluster: \n";
-		set<Edge>::iterator iter = out_edges.begin();
-		while(iter != out_edges.end()){
-			Edge e = *iter;
-			cout<<e.getFromVertex() <<"->"<<e.getToVertex()<<" : "<<e.getLen()<<"\n";
-			iter++;
-		}
-	}
-
-	void print(){
-		cout<<"{";
+/*
+	bool merge_into(Cluster other){
 		set<long>::iterator iter = vertices.begin();
-		while(iter!=vertices.end()){
-			cout<<*iter<<" ";
+		while(iter != vertices.end()){
+			other.get_vertices().insert(*iter);
 			iter++;
 		}
-		cout<<"}";
+		set<Edge>::iterator iter2 = out_edges.begin();
+		while(iter2 != out_edges.end()){
+			Edge *e = *(iter2);
+			if(!other.contains(e->getToVertex())){
+				long tmp = e->getFromVertex();
+				e->setFromVertex(e->getToVertex());
+				e->setToVertex(tmp);
+			}
+			if(!other.contains(e->getToVertex()))
+				other.get_out_edges().insert(e);
+			iter2++;
+		}
 	}
+*/
 };
 
-set<Cluster> *cluster_set;
-
-Cluster *new_cluster;
-
+//Global data
+Cluster *cluster_set;
+long *belongs_to;
 set<Edge> spanning_forest;
 set<Edge> edge_pool;
 
-Cluster *find_cluster(Edge e){
-	
-}
-
+//Locks
+>>>>>>> HEAD@{1}
 pthread_mutex_t edge_transfer_lock;
 pthread_mutex_t cluster_set_lock;
 pthread_mutex_t print_lock;
+
+//work packet functions
+void extend_cluster(void*);
+void merge_clusters(void*);
+
+//initialisation
+void init(int, char**);
