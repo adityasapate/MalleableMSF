@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <set>
 #include <cfloat>
+#include <tuple>
 
 #include "MSF.h"
 
@@ -20,7 +21,7 @@ using namespace std;
 void set_num_cores(int argc, char* argv[]){
 	if (argc < 3){
 		cout<<"Input format : "<<argv[0]<<" <number of cores> <input file>\n";
-		return -1;
+		return;
 	}
 	num_cores = atoi(argv[1]);
 	
@@ -42,8 +43,8 @@ Edge::Edge(){
 	from = -1;
 	to = -1;
 	len = -1;
-	from_cluster = -1;
-	to_cluster = -1;
+//	from_cluster = -1;
+//	to_cluster = -1;
 	pthread_mutex_init(&(this->edge_lock), NULL);
 
 }
@@ -53,12 +54,12 @@ Edge::Edge(long a, long b, float d){
 	from = a;
 	to = b;
 	len = d;
-	from_cluster = cluster_set[from];
-	to_cluster = cluster_set[to];
+//	from_cluster = cluster_set[from];
+//	to_cluster = cluster_set[to];
 	pthread_mutex_init(&this->edge_lock, NULL);
 }
 
-Edge::print(){
+void Edge::print(){
 	cout<<from<<"->"<<to<<" : "<<len<<"\n";
 	return;
 }
@@ -111,7 +112,7 @@ Cluster::Cluster(long i){
 	root = i;
 	cluster_id = i;
 	vertices.insert(i);
-	pthread_mutex_init(&cluster_lock);
+	pthread_mutex_init(&cluster_lock, NULL);
 }
 
 Cluster::Cluster(set<long> vertexSet, long vertex){
@@ -188,7 +189,7 @@ void init(int num_args, char** args){
 	cluster_set = new Cluster*[num_vertices];
 	cluster_set_lock = new pthread_mutex_t[num_vertices];
 
-	status = new bool[num_vertices];
+//	status = new bool[num_vertices];
 	
 	for(long i = 0; i < num_vertices; i++){
 		pthread_mutex_init(&cluster_set_lock[i], NULL);
@@ -204,6 +205,7 @@ void init(int num_args, char** args){
 		if(buffer.compare("done") == 0)
 			break;
 		num_edges++;
+		
 		istringstream buff(buffer);
 		istream_iterator<string> beg(buff), end;
 		vector<string> tokens(beg, end);
@@ -214,9 +216,9 @@ void init(int num_args, char** args){
 
 		if(from_vertex >= num_vertices || to_vertex >= num_vertices){
 			cout<<"Vertex number cannot be more than or equal to number of vertices\n";
-			return NULL;
+			return;
 		}
-
+		//TODO : check
 		Edge *e1 = new Edge(from_vertex, to_vertex, len);
 		cluster_set[from_vertex]->add_edge(*e1);
 		
@@ -254,6 +256,7 @@ void extend_cluster(void* args){
 
 	//prepare arg for merging
 	bool merge_result;
+
 	tuple<Cluster*, Cluster*, Edge*, bool*> merge_args;
 	get<0>(merge_args) = target;
 	get<1> (merge_args) = cluster_set[next_edge->getToVertex()];
@@ -261,6 +264,7 @@ void extend_cluster(void* args){
 	get<3> (merge_args) = &merge_result;
 	//TODO : @Priya, @Niranjan
 	//You will need to create a pkt here and push it into the work queue
+
 	merge_clusters((void *) &merge_args);
 
 	if(merge_result == false){
@@ -278,7 +282,7 @@ void merge_clusters(void* args){
 
 	//parse the input argument
 	tuple<Cluster*, Cluster*, Edge*, bool*> merge_args;
-	merge_args = *(pair<Cluster*, Cluster*, Edge*> *)args;
+	merge_args = *(tuple<Cluster*, Cluster*, Edge*, bool*> *)args;
 	Cluster *winner = get<0>(merge_args);
 	Cluster *loser = get<1>(merge_args);
 	Edge* cross_edge = get<2> (merge_args);
@@ -292,6 +296,7 @@ void merge_clusters(void* args){
 	}
 
 /***************** TODO:check cycles ....is this really required?? *************/
+
 	//create arg for check_cycles
 	bool check_result;
 	tuple<Cluster*, Cluster*, Edge*, bool*> check_args;
@@ -335,7 +340,7 @@ void merge_clusters(void* args){
 		}
 		//merge vertices
 		set<long>::iterator iter = loser->get_vertices().begin();
-		while(iter != loser->get_out_edges().end()){
+		while(iter != loser->get_vertices().end()){
 			long vertex = *iter;
 			pthread_mutex_lock(&cluster_set_lock[vertex]);
 			if(cluster_set[vertex] == loser){
@@ -349,7 +354,7 @@ void merge_clusters(void* args){
 		}
 		loser->unlock();
 		winner->unlock();
-		merge_success = true;
+		*merge_success = true;
 		return;
 	}
 	else{
@@ -357,11 +362,5 @@ void merge_clusters(void* args){
 		return;
 	}
 	return;
-}
-	
-
-	
-	
-
 }
 

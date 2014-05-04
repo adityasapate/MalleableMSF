@@ -15,12 +15,14 @@ long num_vertices;
 long num_edges;
 int num_cores;
 
+class Cluster;
+
 class Edge{
 	long from;
 	long to;
 	float len;
-	Cluster from_cluster;
-	Cluster to_cluster;
+//	Cluster from_cluster;
+//	Cluster to_cluster;
 	pthread_mutex_t edge_lock;
 
 	
@@ -56,6 +58,12 @@ public:
 	void unlock(){
 		pthread_mutex_unlock(&this->edge_lock);
 	}
+
+	//Operators
+	bool operator<(const Edge) const;
+	bool operator=(const Edge);
+	bool operator==(const Edge) const;
+
 };
 
 class Cluster{
@@ -66,12 +74,22 @@ class Cluster{
 	pthread_mutex_t cluster_lock;
 
 public:
-
+	Cluster();
+	Cluster(long);
+	Cluster(set<long>, long);
+	
 	bool contains(long vertex);
 	void print_out_edges();
 	void add_edge(Edge);
 	void print();
-/*	
+
+	//Operators
+
+	bool operator==(const Cluster) const;
+	bool operator<(const Cluster) const;
+	bool operator=(const Cluster);
+
+	/*
 	void update_out_edges(){
 		out_edges.clear();
 		cout<<"Outedges cleared..."<<out_edges.size()<<"\n";
