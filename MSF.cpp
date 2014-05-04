@@ -187,9 +187,12 @@ void init(int num_args, char** args){
 	//allocate initial clusters and belongs_to array
 	cluster_set = new Cluster*[num_vertices];
 	cluster_set_lock = new pthread_mutex_t[num_vertices];
+
+	status = new bool[num_vertices];
 	
 	for(long i = 0; i < num_vertices; i++){
 		pthread_mutex_init(&cluster_set_lock[i], NULL);
+		pthread_mutex_init(&status_lock[i], NULL);
 		Cluster *c = new Cluster(i);
 		cluster_set[i] = c;
 	}
@@ -223,6 +226,7 @@ void init(int num_args, char** args){
 	}
 }
 
+/********************* Thread functions ***************************************/
 void extend_cluster(void* args){
 
 	pair<Cluster*, int*> extend_args = *((pair<Cluster *, int *> *)args);
@@ -246,7 +250,7 @@ void extend_cluster(void* args){
 		return;
 	}
 
-//	spanning_forest.insert(*next_edge);
+	spanning_forest.insert(*next_edge);
 
 	//prepare arg for merging
 	bool merge_result;
@@ -287,6 +291,7 @@ void merge_clusters(void* args){
 		loser = tmp;
 	}
 
+/***************** TODO:check cycles ....is this really required?? *************/
 	//create arg for check_cycles
 	bool check_result;
 	tuple<Cluster*, Cluster*, Edge*, bool*> check_args;

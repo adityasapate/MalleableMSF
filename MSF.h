@@ -165,14 +165,14 @@ public:
 
 //Global data
 Cluster **cluster_set;
-
 set<Edge> spanning_forest;
-set<Edge> edge_pool;
+bool *status;
 
 //Locks
 pthread_mutex_t edge_transfer_lock;
 pthread_mutex_t *cluster_set_lock;
 pthread_mutex_t print_lock;
+pthread_mutex_t *status_lock;
 
 //work packet functions
 void extend_cluster(void*);
