@@ -14,7 +14,7 @@ long max_subgraph_size;
 long num_vertices;
 long num_edges;
 int num_cores;
-
+int num_vert_finished;
 class Cluster;
 
 class Edge{
@@ -72,6 +72,7 @@ class Cluster{
 	set<long> vertices;
 	set<Edge> out_edges;
 	pthread_mutex_t cluster_lock;
+	int status;
 
 public:
 	Cluster();
@@ -157,7 +158,12 @@ public:
 	void unlock(){
 		pthread_mutex_unlock(&cluster_lock);
 	}
-
+	int getStatus(){
+		return status;
+	}
+	void setStatus(int i){
+		status = i;
+	}
 /*
 	bool merge_into(Cluster other){
 		set<long>::iterator iter = vertices.begin();
@@ -195,7 +201,7 @@ pthread_mutex_t *status_lock;
 //work packet functions
 void extend_cluster(void*);
 void merge_clusters(void*);
-void check_cycles(void*);
+//void check_cycles(void*);
 
 //initialisation
 void init(int, char**);

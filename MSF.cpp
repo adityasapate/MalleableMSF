@@ -12,7 +12,10 @@
 #include <set>
 #include <cfloat>
 #include <tuple>
+#include <stdio.h>
+#include <stdlib.h>
 
+#include "sched.h"
 #include "MSF.h"
 
 using namespace std;
@@ -31,7 +34,7 @@ void set_num_cores(int argc, char* argv[]){
 	//doesn't really make sense if num_cores <=0 or >total_num_cores
 	//return total_num_cores in this case
 	if(num_cores <= 0 || num_cores > total_num_cores)
-		num_cores = total_num_cores;
+		num_cores = total_num_cores -1;
 	
 	return;
 }
@@ -179,7 +182,8 @@ void init(int num_args, char** args){
 	ifstream input_file;
 	input_file.open(args[2]);
 	cout<<"Parsing the input file...\n";
-
+	num_vert_finished = 0;
+	
 	//read number of vertices
 	string num_vertices_str;
 	getline(input_file, num_vertices_str);
@@ -188,16 +192,17 @@ void init(int num_args, char** args){
 	//allocate initial clusters and belongs_to array
 	cluster_set = new Cluster*[num_vertices];
 	cluster_set_lock = new pthread_mutex_t[num_vertices];
-
+	status_lock = new pthread_mutex_t[num_vertices];
 //	status = new bool[num_vertices];
-	
+	cout<<"blah";
 	for(long i = 0; i < num_vertices; i++){
 		pthread_mutex_init(&cluster_set_lock[i], NULL);
 		pthread_mutex_init(&status_lock[i], NULL);
 		Cluster *c = new Cluster(i);
+		c->setStatus(1);
 		cluster_set[i] = c;
 	}
-
+	cout<<"ha ha";
 	while(1){
 
 		string buffer;
@@ -231,6 +236,7 @@ void init(int num_args, char** args){
 /********************* Thread functions ***************************************/
 void extend_cluster(void* args){
 
+	cout << "extended cluster called";
 	pair<Cluster*, int*> extend_args = *((pair<Cluster *, int *> *)args);
 	Cluster *target = extend_args.first;
 	int *result = extend_args.second;
@@ -239,6 +245,14 @@ void extend_cluster(void* args){
 	int flag = 0;
 	Edge *next_edge;
 	set<Edge>::iterator iter = target->get_out_edges().begin();
+	
+	//if this cluster has no more out edges, there is no more to be done for this
+	if( target->get_out_edges().empty() ){
+		target->setStatus(1) ;
+		num_vert_finished += target->size();
+		return;
+	}
+	
 	while(iter != target->get_out_edges().end()){
 		Edge e = *iter;
 		if(e.getLen() < min_len){
@@ -262,19 +276,12 @@ void extend_cluster(void* args){
 	get<1> (merge_args) = cluster_set[next_edge->getToVertex()];
 	get<2> (merge_args) = next_edge;
 	get<3> (merge_args) = &merge_result;
+	
 	//TODO : @Priya, @Niranjan
 	//You will need to create a pkt here and push it into the work queue
-
-	merge_clusters((void *) &merge_args);
-
-	if(merge_result == false){
-		//merge was unsuccessful
-		*result = -1;
-		return;
-	}
+	workobject work = workobject( merge_clusters, (void *) &merge_args);
+	queue_work.push( work);
 	
-	//merge was successful
-	*result = 1;
 	return;
 }
 
@@ -298,7 +305,7 @@ void merge_clusters(void* args){
 /***************** TODO:check cycles ....is this really required?? *************/
 
 	//create arg for check_cycles
-	bool check_result;
+	bool check_result =false;
 	tuple<Cluster*, Cluster*, Edge*, bool*> check_args;
 	get<0>(check_args) = winner;
 	get<1>(check_args) = loser;
@@ -306,7 +313,7 @@ void merge_clusters(void* args){
 	get<3>(check_args) = &check_result;
 
 	//check if cycles will be formed if we merge
-	check_cycles((void *)&check_args);
+	//check_cycles((void *)&check_args);
 
 	if(check_result == false){
 		//no risk : do the merge
@@ -362,5 +369,61 @@ void merge_clusters(void* args){
 		return;
 	}
 	return;
+	
+	
 }
 
+extern void *schedule(void *);
+extern std::queue <workobject> queue_work;
+
+int main(int numargs, char** args){
+	//input : no of cores, input file name
+	if(numargs < 3)
+		cout << "enter the num of cores and the file name as the parameter respectively";
+	
+	//initialize the clusters
+	init(numargs, args);
+	
+	write(1, "init done", strlen("init done")+1);
+	//push it to the work queue
+	for( int i=0; i<num_vertices/3; i++ ){
+		int k = 0;
+		int idx = rand() % num_vertices +1;
+		pair<Cluster*, int*> arg_extend ( cluster_set[idx], &k );
+		workobject work = workobject( extend_cluster, (void*) &arg_extend);
+		queue_work.push( work );
+	}
+	
+	pthread_t schedule_thread;
+	pthread_create(&schedule_thread,NULL, schedule, (void*)&num_cores);
+	//broadcast
+	
+	while(1){
+		//stop executing when all the cluster have finished
+		if( num_vert_finished == num_vertices )
+			break;
+
+		int idx = rand() % num_vertices ;
+
+		// if this cluster has finished execution and has no more out edge
+		while( cluster_set[idx]->getStatus() != 0){
+			idx = rand() % num_vertices ;
+		}
+
+		int k = 0;
+		pair<Cluster*, int*> arg_extend ( cluster_set[idx], &k );
+		workobject work = workobject( extend_cluster, (void*) &arg_extend);
+		queue_work.push( work );	
+			
+	}
+	
+	set<Edge>::iterator iter = spanning_forest.begin();
+	while(iter != spanning_forest.end()){
+		Edge e = *iter;
+		e.print();
+		cout<<"\n";
+		iter++;
+	}
+	
+	
+}
